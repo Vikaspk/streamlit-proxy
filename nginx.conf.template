@@ -1,47 +1,51 @@
 server {
-    # Railway injects $PORT at runtime (we envsubst ONLY this var)
+    # Railway injects $PORT → we substitute only this var
     listen ${PORT};
 
-    # ---- upstream target ----
-    set $upstream_host  kiosc-agent-app-csmqytqwhfcjow5zxzhyb6.streamlit.app;
-    set $upstream       https://kiosc-agent-app-csmqytqwhfcjow5zxzhyb6.streamlit.app;
+    # ✅ Add resolver so DNS works inside container
+    resolver 1.1.1.1 1.0.0.1 8.8.8.8 8.8.4.4 valid=300s;
+    resolver_timeout 10s;
+
+    # Upstream Streamlit app
+    set $upstream_host kiosc-agent-app-csmqytqwhfcjow5zxzhyb6.streamlit.app;
+    set $upstream      https://kiosc-agent-app-csmqytqwhfcjow5zxzhyb6.streamlit.app;
 
     location / {
         proxy_pass $upstream;
 
-        # --- keep websockets happy ---
+        # ✅ WebSocket + long polling
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection "upgrade";
 
-        # --- send correct Host to upstream ---
+        # ✅ Correct Host header
         proxy_set_header Host $upstream_host;
 
-        # --- pass client info ---
+        # ✅ Pass client info
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
 
+        # ✅ Timeouts
         proxy_read_timeout 3600s;
         proxy_send_timeout 3600s;
 
-        # --- rewrite upstream redirects back to your proxy url ---
-        # (prevents “share.streamlit.io redirected too many times”)
+        # ✅ Rewrite upstream redirects so they point back to your proxy
         proxy_redirect https://$upstream_host/ https://$host/;
         proxy_redirect https://share.streamlit.io/ https://$host/;
 
-        # --- rewrite cookies so they stick to your domain ---
+        # ✅ Rewrite cookies to your domain
         proxy_cookie_domain $upstream_host $host;
         proxy_cookie_domain .streamlit.app $host;
         proxy_cookie_domain share.streamlit.io $host;
 
-        # --- strip anti-embed headers from upstream, add permissive ones ---
+        # ✅ Remove upstream anti-embed headers, add permissive ones
         proxy_hide_header X-Frame-Options;
         proxy_hide_header Content-Security-Policy;
         add_header X-Frame-Options "ALLOWALL" always;
         add_header Content-Security-Policy "frame-ancestors *" always;
 
-        # (optional) smoother streaming
+        # ✅ Disable buffering for smoother streaming
         proxy_buffering off;
     }
 }
