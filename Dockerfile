@@ -1,11 +1,8 @@
-# Use a lightweight Nginx image
 FROM nginx:alpine
 
-# Copy our custom config
-COPY nginx.conf /etc/nginx/nginx.conf
+# Copy config and substitute env vars (Railway provides PORT)
+COPY nginx.conf /etc/nginx/templates/default.conf.template
 
-# Expose Railway's expected port
 EXPOSE 8080
 
-# Start Nginx
-CMD ["nginx", "-g", "daemon off;"]
+CMD ["sh", "-c", "envsubst < /etc/nginx/templates/default.conf.template > /etc/nginx/conf.d/default.conf && exec nginx -g 'daemon off;'"]
