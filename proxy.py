@@ -3,12 +3,15 @@ import requests, sys
 
 app = Flask(__name__)
 
-# Base Streamlit Cloud app
 TARGET = "https://kiosc-agent-app-csmqytqwhfcjow5zxzhyb6.streamlit.app"
 
 @app.route("/", defaults={"path": ""})
 @app.route("/<path:path>")
 def proxy(path):
+    # ✅ If no path, default to streamlit_app/
+    if path == "":
+        path = "streamlit_app/"
+
     url = f"{TARGET}/{path}"
     if request.query_string:
         url = f"{url}?{request.query_string.decode('utf-8')}"
