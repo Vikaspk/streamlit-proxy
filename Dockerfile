@@ -1,8 +1,12 @@
 FROM nginx:alpine
 
-# Copy config into conf.d (not main nginx.conf!)
-COPY nginx.conf /etc/nginx/conf.d/default.conf
+# Install envsubst
+RUN apk add --no-cache gettext
+
+# Copy template config
+COPY nginx.conf.template /etc/nginx/templates/default.conf.template
 
 EXPOSE 8080
 
-CMD ["nginx", "-g", "daemon off;"]
+# Substitute $PORT and start nginx
+CMD ["/bin/sh", "-c", "envsubst < /etc/nginx/templates/default.conf.template > /etc/nginx/conf.d/default.conf && exec nginx -g 'daemon off;'"]
