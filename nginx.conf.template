@@ -1,51 +1,89 @@
 server {
-    # Railway injects $PORT → we substitute only this var
+    # Railway injects $PORT (we envsubst ONLY this var at runtime)
     listen ${PORT};
 
-    # ✅ Add resolver so DNS works inside container
+    # DNS so Nginx can resolve external hosts
     resolver 1.1.1.1 1.0.0.1 8.8.8.8 8.8.4.4 valid=300s;
     resolver_timeout 10s;
 
-    # Upstream Streamlit app
-    set $upstream_host kiosc-agent-app-csmqytqwhfcjow5zxzhyb6.streamlit.app;
-    set $upstream      https://kiosc-agent-app-csmqytqwhfcjow5zxzhyb6.streamlit.app;
+    # Upstreams
+    set $app_host   kiosc-agent-app-csmqytqwhfcjow5zxzhyb6.streamlit.app;
+    set $app_up     https://kiosc-agent-app-csmqytqwhfcjow5zxzhyb6.streamlit.app;
 
-    location / {
-        proxy_pass $upstream;
+    set $share_host share.streamlit.io;
+    set $share_up   https://share.streamlit.io;
 
-        # ✅ WebSocket + long polling
+    # ---- Special case: Streamlit auth paths (/-/auth/*) ----
+    # These live on share.streamlit.io, not the app host. If we don't proxy them,
+    # you get redirect loops or 502s.
+    location ^~ /-/auth/ {
+        proxy_pass $share_up;
+
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection "upgrade";
+        proxy_set_header Host $share_host;
 
-        # ✅ Correct Host header
-        proxy_set_header Host $upstream_host;
-
-        # ✅ Pass client info
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
 
-        # ✅ Timeouts
         proxy_read_timeout 3600s;
         proxy_send_timeout 3600s;
 
-        # ✅ Rewrite upstream redirects so they point back to your proxy
-        proxy_redirect https://$upstream_host/ https://$host/;
-        proxy_redirect https://share.streamlit.io/ https://$host/;
+        # Rewrite redirects back through your proxy
+        proxy_redirect https://$share_host/ https://$host/;
+        proxy_redirect https://$app_host/   https://$host/;
 
-        # ✅ Rewrite cookies to your domain
-        proxy_cookie_domain $upstream_host $host;
-        proxy_cookie_domain .streamlit.app $host;
-        proxy_cookie_domain share.streamlit.io $host;
+        # Rewrite cookies to your domain
+        proxy_cookie_domain $share_host     $host;
+        proxy_cookie_domain $app_host       $host;
+        proxy_cookie_domain .streamlit.app  $host;
 
-        # ✅ Remove upstream anti-embed headers, add permissive ones
+        # Strip upstream anti-embed headers; add permissive ones
         proxy_hide_header X-Frame-Options;
         proxy_hide_header Content-Security-Policy;
         add_header X-Frame-Options "ALLOWALL" always;
         add_header Content-Security-Policy "frame-ancestors *" always;
 
-        # ✅ Disable buffering for smoother streaming
+        proxy_buffering off;
+    }
+
+    # ---- Everything else goes to the app host ----
+    location / {
+        proxy_pass $app_up;
+
+        # WebSockets + long polling
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+
+        # Correct Host header for upstream TLS/SNI
+        proxy_set_header Host $app_host;
+
+        # Client info
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        proxy_read_timeout 3600s;
+        proxy_send_timeout 3600s;
+
+        # Rewrite upstream redirects back through your proxy
+        proxy_redirect https://$app_host/   https://$host/;
+        proxy_redirect https://$share_host/ https://$host/;
+
+        # Rewrite cookies to your domain
+        proxy_cookie_domain $app_host       $host;
+        proxy_cookie_domain $share_host     $host;
+        proxy_cookie_domain .streamlit.app  $host;
+
+        # Strip upstream anti-embed headers; add permissive ones
+        proxy_hide_header X-Frame-Options;
+        proxy_hide_header Content-Security-Policy;
+        add_header X-Frame-Options "ALLOWALL" always;
+        add_header Content-Security-Policy "frame-ancestors *" always;
+
         proxy_buffering off;
     }
 }
