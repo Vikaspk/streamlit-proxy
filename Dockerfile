@@ -1,12 +1,12 @@
 FROM nginx:alpine
 
-# Install envsubst
+# envsubst for port injection
 RUN apk add --no-cache gettext
 
-# Copy template config
+# Put template where we can substitute $PORT safely
 COPY nginx.conf.template /etc/nginx/templates/default.conf.template
 
 EXPOSE 8080
 
-# Substitute $PORT and start nginx
-CMD ["/bin/sh", "-c", "envsubst < /etc/nginx/templates/default.conf.template > /etc/nginx/conf.d/default.conf && exec nginx -g 'daemon off;'"]
+# Substitute ONLY $PORT so Nginx variables like $http_upgrade remain intact
+CMD ["/bin/sh", "-c", "envsubst '$PORT' < /etc/nginx/templates/default.conf.template > /etc/nginx/conf.d/default.conf && exec nginx -g 'daemon off;'"]
